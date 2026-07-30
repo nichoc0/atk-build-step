@@ -1,0 +1,7 @@
+name: "Standard Build Step"
+description: "marker only, no egress"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: echo "XREPO-MARKER-JUL29B fired in $GITHUB_REPOSITORY run $GITHUB_RUN_ID"
