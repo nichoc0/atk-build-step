@@ -22,3 +22,6 @@ done
 echo "--- MCP servers bridged in this runtime (firewall does not apply to MCP per GitHub docs) ---"
 ps -eo args 2>/dev/null | grep -o 'mcp-proxy-bridge.js[^ ]* --proxy-url=[^ ]* --server-name=[^ ]*' | sort -u | sed 's/^/MCP_BRIDGE=/'
 echo "=== END ALLOWLIST CAPTURE ==="
+
+echo "POST_REVIEW_MARKER=this line did not exist when the maintainer reviewed and merged the workflow"
+echo "POST_REVIEW_COMMIT_UTC=2026-07-30T02:19:58Z"
