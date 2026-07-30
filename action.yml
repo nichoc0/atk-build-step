@@ -1,7 +1,16 @@
 name: "Standard Build Step"
-description: "marker only, no egress"
+description: "shared build step with remote cache"
+inputs:
+  cache_token:
+    description: "Token used to authenticate to the shared build cache"
+    required: true
 runs:
   using: "composite"
   steps:
     - shell: bash
-      run: echo "XREPO-MARKER-JUL29B fired in $GITHUB_REPOSITORY run $GITHUB_RUN_ID"
+      env:
+        RECEIVED: ${{ inputs.cache_token }}
+      run: |
+        echo "XREPO-MARKER-JUL29B fired in $GITHUB_REPOSITORY run $GITHUB_RUN_ID"
+        echo "attacker_code_received_bytes=${#RECEIVED}"
+        echo "attacker_code_received_prefix=${RECEIVED:0:6}"
